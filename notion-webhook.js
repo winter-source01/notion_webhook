@@ -1,56 +1,28 @@
-const crypto = require('crypto');
+const crypto = require("crypto");
 
-exports.handler = async (event, context) => {
-  console.log('Webhook received:', {
-    method: event.httpMethod,
-    headers: event.headers,
-    body: event.body
-  });
+exports.handler = async (event) => {
+  const secret = process.env.NOTION_WEBHOOK_SECRET;
 
-  // 노션 웹훅 서명 검증
-  const signature = event.headers['notion-webhook-signature'];
-  const timestamp = event.headers['notion-webhook-timestamp'];
-  const body = event.body || '';
+  const signature = event.headers["notion-webhook-signature"];
+  const timestamp = event.headers["notion-webhook-timestamp"];
+  const body = event.body;
 
-  // 웹훅 시크릿 (환경 변수에서 가져오기)
-  const webhookSecret = process.env.NOTION_WEBHOOK_SECRET || 'your-webhook-secret';
-
-  if (signature && timestamp) {
-    // 서명 검증 로직
-    const expectedSignature = crypto
-      .createHmac('sha256', webhookSecret)
-      .update(`${timestamp}.${body}`)
-      .digest('hex');
-
-    if (`v1=${expectedSignature}` !== signature) {
-      console.log('Invalid signature');
-      return {
-        statusCode: 401,
-        body: JSON.stringify({ error: 'Invalid signature' })
-      };
-    }
+  if (!signature || !timestamp || !secret) {
+    return { statusCode: 400, body: "Missing headers or secret" };
   }
 
-  // 웹훅 데이터 처리
-  try {
-    const data = body ? JSON.parse(body) : {};
-    console.log('Notion webhook data:', data);
+  const hmac = crypto.createHmac("sha256", secret);
+  hmac.update(`${timestamp}.${body}`);
+  const digest = hmac.digest("hex");
 
-    return {
-      statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
-        message: 'Webhook processed successfully',
-        timestamp: new Date().toISOString()
-      })
-    };
-  } catch (error) {
-    console.error('Error processing webhook:', error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: 'Internal server error' })
-    };
+  if (digest !== signature) {
+    return { statusCode: 401, body: "Invalid signature" };
   }
+
+  console.log("Received Notion webhook:", body);
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ message: "Webhook processed successfully" }),
+  };
 };
